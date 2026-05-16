@@ -1,0 +1,53 @@
+import React, { useState } from 'react';
+
+// بيانات المنتجات التجريبية
+const PRODUCTS = [
+  { id: 1, name: "برجر الفرصة السينمائي", price: 150, image: "https://via.placeholder.com/150", category: "food" },
+  { id: 2, name: "تيشرت Time Hand", price: 450, image: "https://via.placeholder.com/150", category: "fashion" },
+  { id: 3, name: "وجبة دبل تشيز", price: 200, image: "https://via.placeholder.com/150", category: "food" },
+];
+
+export default function App() {
+  const [cart, setCart] = useState([]);
+
+  const addToCart = (product) => {
+    setCart([...cart, product]);
+    alert(`تم إضافة ${product.name} للسلة!`);
+  };
+
+  return (
+    <div dir="rtl" style={{ fontFamily: 'Arial, sans-serif', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
+      {/* Header */}
+      <header style={{ background: '#1e1b4b', color: 'white', padding: '20px', textAlign: 'center', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
+        <h1 style={{ margin: 0, fontSize: '24px' }}>🛒 متجر الفرصة</h1>
+        <p style={{ fontSize: '14px', opacity: 0.8 }}>تسوق أفضل العروض بضغطة زر</p>
+      </header>
+
+      {/* Main Content */}
+      <main style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
+        <h2 style={{ borderBottom: '2px solid #1e1b4b', paddingBottom: '10px', color: '#1e1b4b' }}>المنتجات المميزة</h2>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', marginTop: '20px' }}>
+          {PRODUCTS.map(product => (
+            <div key={product.id} style={{ background: 'white', borderRadius: '12px', padding: '15px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', textAlign: 'center' }}>
+              <img src={product.image} alt={product.name} style={{ width: '100%', borderRadius: '8px' }} />
+              <h3 style={{ fontSize: '16px', margin: '10px 0' }}>{product.name}</h3>
+              <p style={{ color: '#059669', fontWeight: 'bold' }}>{product.price} ج.م</p>
+              <button 
+                onClick={() => addToCart(product)}
+                style={{ background: '#1e1b4b', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', width: '100%' }}
+              >
+                إضافة للسلة
+              </button>
+            </div>
+          ))}
+        </div>
+      </main>
+
+      {/* Cart Summary */}
+      <div style={{ position: 'fixed', bottom: '20px', left: '20px', background: '#059669', color: 'white', padding: '15px', borderRadius: '50px', boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
+        🛒 السلة: {cart.length}
+      </div>
+    </div>
+  );
+}

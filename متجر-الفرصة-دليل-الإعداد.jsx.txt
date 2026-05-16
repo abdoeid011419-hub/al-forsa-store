@@ -1,0 +1,616 @@
+import { useState } from "react";
+
+const steps = {
+  google: {
+    title: "Google OAuth مع Supabase",
+    icon: "🔐",
+    color: "#4285F4",
+    sections: [
+      {
+        title: "الخطوة 1: إعداد Google Cloud Console",
+        type: "steps",
+        items: [
+          'روح على console.cloud.google.com وسجل دخول',
+          'اعمل Project جديد أو اختار واحد موجود',
+          'من القايمة: APIs & Services → Credentials',
+          'اضغط Create Credentials → OAuth 2.0 Client ID',
+          'Application type: Web application',
+          `Authorized redirect URIs أضف:\nhttps://[YOUR-PROJECT].supabase.co/auth/v1/callback`,
+          'احفظ الـ Client ID و Client Secret',
+        ],
+      },
+      {
+        title: "الخطوة 2: تفعيل Google في Supabase",
+        type: "steps",
+        items: [
+          'روح على app.supabase.com → مشروعك',
+          'Authentication → Providers → Google',
+          'فعّل Enable Google Provider',
+          'حط الـ Client ID والـ Client Secret',
+          'احفظ',
+        ],
+      },
+      {
+        title: "الخطوة 3: الكود في React",
+        type: "code",
+        lang: "javascript",
+        code: `// lib/supabase.js
+import { createClient } from '@supabase/supabase-js'
+
+export const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+)
+
+// components/GoogleLoginButton.jsx
+import { supabase } from '../lib/supabase'
+
+export function GoogleLoginButton() {
+  const handleGoogleLogin = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin + '/auth/callback',
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
+      },
+    })
+    if (error) console.error('Google Login Error:', error)
+  }
+
+  return (
+    <button onClick={handleGoogleLogin} className="google-btn">
+      <svg viewBox="0 0 24 24" width="20" height="20">
+        {/* Google Icon SVG */}
+      </svg>
+      تسجيل الدخول بـ Google
+    </button>
+  )
+}
+
+// pages/auth/callback.jsx  ← صفحة مهمة لازم تعملها
+import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../../lib/supabase'
+
+export function AuthCallback() {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        // تأكد إن الـ profile موجود
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
+
+        if (!profile) {
+          // أنشئ profile جديد للمستخدم
+          await supabase.from('profiles').insert({
+            id: session.user.id,
+            email: session.user.email,
+            full_name: session.user.user_metadata?.full_name,
+            avatar_url: session.user.user_metadata?.avatar_url,
+            role: 'customer',
+          })
+        }
+        navigate('/')
+      }
+    })
+  }, [navigate])
+
+  return <div>جاري تسجيل الدخول...</div>
+}`,
+      },
+      {
+        title: "الخطوة 4: أضف الـ Route",
+        type: "code",
+        lang: "javascript",
+        code: `// App.jsx - أضف الـ route ده
+import { AuthCallback } from './pages/auth/callback'
+
+// داخل Router:
+<Route path="/auth/callback" element={<AuthCallback />} />`,
+      },
+    ],
+  },
+  admin: {
+    title: "إصلاح Admin Login",
+    icon: "👑",
+    color: "#F59E0B",
+    sections: [
+      {
+        title: "الخطوة 1: إنشاء حساب Admin في Supabase",
+        type: "steps",
+        items: [
+          'روح على Supabase Dashboard → Authentication → Users',
+          'اضغط Invite user وادخل الإيميل بتاعك',
+          'أو Create User مباشرة',
+          'بعد إنشاء الحساب، روح على SQL Editor',
+          'نفّذ الكود SQL اللي تحت عشان تدي الحساب صلاحية admin',
+        ],
+      },
+      {
+        title: "SQL: تعيين دور Admin",
+        type: "code",
+        lang: "sql",
+        code: `-- نفّذ ده في Supabase SQL Editor
+-- استبدل 'your-email@gmail.com' بإيميلك
+
+UPDATE profiles 
+SET role = 'admin'
+WHERE email = 'your-email@gmail.com';
+
+-- تأكد إن التحديث اتعمل
+SELECT id, email, role FROM profiles 
+WHERE email = 'your-email@gmail.com';`,
+      },
+      {
+        title: "الخطوة 2: حماية صفحات Admin في React",
+        type: "code",
+        lang: "javascript",
+        code: `// components/ProtectedAdminRoute.jsx
+import { Navigate } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
+
+export function ProtectedAdminRoute({ children }) {
+  const { user, profile, loading } = useAuth()
+
+  if (loading) return <div>جاري التحقق...</div>
+  
+  if (!user) return <Navigate to="/login" replace />
+  
+  if (profile?.role !== 'admin') {
+    return <Navigate to="/" replace />
+  }
+  
+  return children
+}
+
+// hooks/useAuth.js
+import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
+
+export function useAuth() {
+  const [user, setUser] = useState(null)
+  const [profile, setProfile] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    // جيب الـ session الحالي
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      setUser(session?.user ?? null)
+      if (session?.user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
+        setProfile(data)
+      }
+      setLoading(false)
+    })
+
+    // استمع لتغييرات الـ auth
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setUser(session?.user ?? null)
+        if (session?.user) {
+          const { data } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single()
+          setProfile(data)
+        } else {
+          setProfile(null)
+        }
+        setLoading(false)
+      }
+    )
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  return { user, profile, loading }
+}
+
+// App.jsx - استخدم الحماية على صفحات الـ Admin
+import { ProtectedAdminRoute } from './components/ProtectedAdminRoute'
+
+// داخل Routes:
+<Route path="/admin/*" element={
+  <ProtectedAdminRoute>
+    <AdminLayout />
+  </ProtectedAdminRoute>
+} />`,
+      },
+      {
+        title: "الخطوة 3: Row Level Security (RLS) في Supabase",
+        type: "code",
+        lang: "sql",
+        code: `-- حماية جداول الـ Admin في Supabase SQL Editor
+
+-- سياسة: بس الـ admin يقدر يعدل المنتجات
+CREATE POLICY "Admin only products write" ON products
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid()
+      AND profiles.role = 'admin'
+    )
+  );
+
+-- سياسة: أي حد يقدر يقرأ المنتجات النشطة
+CREATE POLICY "Public products read" ON products
+  FOR SELECT USING (is_active = true);
+
+-- نفس الفكرة للـ orders
+CREATE POLICY "Admin full orders access" ON orders
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid()
+      AND profiles.role = 'admin'
+    )
+  );
+
+-- المستخدم يشوف طلباته بس
+CREATE POLICY "User own orders" ON orders
+  FOR SELECT USING (user_id = auth.uid());`,
+      },
+    ],
+  },
+  deploy: {
+    title: "النشر على Vercel + Google",
+    icon: "🚀",
+    color: "#10B981",
+    sections: [
+      {
+        title: "الخطوة 1: تجهيز ملف .env",
+        type: "code",
+        lang: "bash",
+        code: `# .env.local (محلي - متشاركوش أبدًا!)
+VITE_SUPABASE_URL=https://xxxxx.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJxxxxxx...
+
+# .env.example (للـ repo بدون القيم الحقيقية)
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+
+# .gitignore - تأكد الملف ده موجود
+.env
+.env.local
+.env.production`,
+      },
+      {
+        title: "الخطوة 2: النشر على Vercel",
+        type: "steps",
+        items: [
+          'ارفع الكود على GitHub (مهم قبل أي حاجة)',
+          'روح على vercel.com واعمل حساب',
+          'اضغط New Project → Import Git Repository',
+          'اختار الـ repo بتاعك',
+          'Framework Preset: Vite',
+          'Build Command: npm run build',
+          'Output Directory: dist',
+          'ضيف Environment Variables (VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY)',
+          'اضغط Deploy',
+        ],
+      },
+      {
+        title: "الخطوة 3: تحديث Supabase بـ URL الجديد",
+        type: "steps",
+        items: [
+          'بعد ما Vercel يديك الـ URL (مثلاً: متجرك.vercel.app)',
+          'روح Supabase → Authentication → URL Configuration',
+          'Site URL: https://متجرك.vercel.app',
+          'Redirect URLs أضف: https://متجرك.vercel.app/**',
+          'كمان روح Google Cloud Console وأضف الـ URL الجديد في Authorized redirect URIs',
+        ],
+      },
+      {
+        title: "الخطوة 4: ظهور الموقع في Google (SEO)",
+        type: "steps",
+        items: [
+          'روح على search.google.com/search-console',
+          'Add Property → أضف الـ URL بتاعك',
+          'اختار HTML tag للتحقق',
+          'حط الـ meta tag ده في index.html',
+        ],
+      },
+      {
+        title: "Meta Tags للـ SEO في index.html",
+        type: "code",
+        lang: "html",
+        code: `<!-- index.html - داخل <head> -->
+
+<!-- Google Verification -->
+<meta name="google-site-verification" content="YOUR_CODE_HERE" />
+
+<!-- SEO أساسي -->
+<meta name="description" content="متجر الفرصه - تسوق أفضل المنتجات بأسعار لا تُقاوم" />
+<meta name="keywords" content="متجر, تسوق, عروض, منتجات, مصر" />
+<meta name="author" content="متجر الفرصه" />
+
+<!-- Open Graph (للمشاركة) -->
+<meta property="og:title" content="متجر الفرصه" />
+<meta property="og:description" content="تسوق أفضل المنتجات بأسعار لا تُقاوم" />
+<meta property="og:image" content="https://متجرك.vercel.app/og-image.jpg" />
+<meta property="og:url" content="https://متجرك.vercel.app" />
+<meta property="og:type" content="website" />
+<meta property="og:locale" content="ar_EG" />
+
+<!-- للـ Arabic -->
+<html lang="ar" dir="rtl">`,
+      },
+      {
+        title: "الخطوة 5: Sitemap تلقائي",
+        type: "code",
+        lang: "javascript",
+        code: `// vite.config.js - أضف مكتبة sitemap
+// npm install vite-plugin-sitemap
+
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import sitemap from 'vite-plugin-sitemap'
+
+export default defineConfig({
+  plugins: [
+    react(),
+    sitemap({
+      hostname: 'https://متجرك.vercel.app',
+      routes: [
+        '/',
+        '/shop',
+        '/about',
+        '/contact',
+        '/offers',
+      ],
+    }),
+  ],
+})
+
+// بعد الـ build هتلاقي sitemap.xml في مجلد dist
+// ارفعه على Google Search Console`,
+      },
+    ],
+  },
+};
+
+const CodeBlock = ({ code, lang }) => {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <div style={{ position: "relative", marginTop: 12 }}>
+      <div style={{
+        background: "#0d1117",
+        borderRadius: 10,
+        border: "1px solid #30363d",
+        overflow: "hidden",
+      }}>
+        <div style={{
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: "8px 16px", background: "#161b22", borderBottom: "1px solid #30363d",
+        }}>
+          <span style={{ color: "#8b949e", fontSize: 12, fontFamily: "monospace" }}>{lang}</span>
+          <button onClick={copy} style={{
+            background: copied ? "#238636" : "#21262d",
+            color: copied ? "#fff" : "#8b949e",
+            border: "1px solid #30363d",
+            borderRadius: 6, padding: "2px 10px", fontSize: 11,
+            cursor: "pointer", transition: "all 0.2s",
+          }}>
+            {copied ? "✓ تم النسخ" : "نسخ"}
+          </button>
+        </div>
+        <pre style={{
+          margin: 0, padding: "16px", overflowX: "auto",
+          color: "#e6edf3", fontSize: 12, lineHeight: 1.7,
+          fontFamily: "Fira Code, Consolas, monospace",
+          direction: "ltr", textAlign: "left",
+        }}>
+          <code>{code}</code>
+        </pre>
+      </div>
+    </div>
+  );
+};
+
+const StepsList = ({ items }) => (
+  <ol style={{ margin: "12px 0 0 0", padding: 0, listStyle: "none" }}>
+    {items.map((item, i) => (
+      <li key={i} style={{
+        display: "flex", gap: 12, padding: "8px 0",
+        borderBottom: i < items.length - 1 ? "1px solid #1e293b" : "none",
+      }}>
+        <span style={{
+          minWidth: 26, height: 26, borderRadius: "50%",
+          background: "#1e293b", border: "1px solid #334155",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: "#6366f1", fontWeight: "bold", fontSize: 12,
+        }}>{i + 1}</span>
+        <span style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-line" }}>{item}</span>
+      </li>
+    ))}
+  </ol>
+);
+
+export default function SetupGuide() {
+  const [activeTab, setActiveTab] = useState("google");
+  const [openSection, setOpenSection] = useState(null);
+  const current = steps[activeTab];
+
+  return (
+    <div style={{
+      minHeight: "100vh", background: "#0a0f1e",
+      fontFamily: "Tajawal, Cairo, sans-serif",
+      direction: "rtl",
+    }}>
+      {/* Header */}
+      <div style={{
+        background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)",
+        borderBottom: "1px solid #1e293b",
+        padding: "24px 20px",
+        textAlign: "center",
+      }}>
+        <div style={{ fontSize: 32, marginBottom: 8 }}>🛒</div>
+        <h1 style={{ color: "#f8fafc", margin: 0, fontSize: 22, fontWeight: 800 }}>
+          متجر الفرصة - دليل الإعداد الكامل
+        </h1>
+        <p style={{ color: "#94a3b8", margin: "8px 0 0", fontSize: 13 }}>
+          Google OAuth • Admin Login • النشر على Google
+        </p>
+      </div>
+
+      {/* Tabs */}
+      <div style={{
+        display: "flex", gap: 8, padding: "16px 20px",
+        background: "#0f172a", borderBottom: "1px solid #1e293b",
+        overflowX: "auto",
+      }}>
+        {Object.entries(steps).map(([key, val]) => (
+          <button key={key} onClick={() => { setActiveTab(key); setOpenSection(null); }} style={{
+            padding: "10px 18px", borderRadius: 10, cursor: "pointer",
+            whiteSpace: "nowrap", fontSize: 13, fontFamily: "inherit",
+            fontWeight: activeTab === key ? 700 : 400,
+            background: activeTab === key
+              ? `linear-gradient(135deg, ${val.color}22, ${val.color}11)`
+              : "#1e293b",
+            border: activeTab === key ? `1.5px solid ${val.color}` : "1.5px solid #334155",
+            color: activeTab === key ? val.color : "#94a3b8",
+            transition: "all 0.2s",
+          }}>
+            {val.icon} {val.title}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div style={{ padding: "20px", maxWidth: 780, margin: "0 auto" }}>
+        {current.sections.map((section, i) => (
+          <div key={i} style={{
+            background: "#0f172a", borderRadius: 12,
+            border: "1px solid #1e293b", marginBottom: 12,
+            overflow: "hidden",
+          }}>
+            <button
+              onClick={() => setOpenSection(openSection === i ? null : i)}
+              style={{
+                width: "100%", padding: "14px 18px",
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                background: "none", border: "none", cursor: "pointer",
+                color: "#f1f5f9", textAlign: "right",
+              }}
+            >
+              <span style={{ fontSize: 14, fontWeight: 600, fontFamily: "inherit" }}>
+                {section.title}
+              </span>
+              <span style={{
+                color: "#6366f1", fontSize: 18,
+                transform: openSection === i ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 0.2s",
+              }}>⌄</span>
+            </button>
+
+            {openSection === i && (
+              <div style={{ padding: "0 18px 18px", borderTop: "1px solid #1e293b" }}>
+                {section.type === "steps" && <StepsList items={section.items} />}
+                {section.type === "code" && <CodeBlock code={section.code} lang={section.lang} />}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {/* Important Notes */}
+        <div style={{
+          background: "#1a1200", border: "1px solid #78350f",
+          borderRadius: 12, padding: "16px 18px", marginTop: 20,
+        }}>
+          <div style={{ color: "#fbbf24", fontWeight: 700, marginBottom: 8, fontSize: 14 }}>
+            ⚠️ تنبيهات مهمة
+          </div>
+          <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+            {[
+              "متبعتش الـ API Key بتاع Tajer في ملفات GitHub لأنه كان مكشوف في الملف",
+              "دايمًا حط الـ API Keys في ملف .env وأضفه لـ .gitignore",
+              "غير الـ Tajer API Key من لوحة التحكم لأن الكي القديم اتكشف",
+              "فعّل RLS (Row Level Security) في كل جداول Supabase",
+            ].map((note, i) => (
+              <li key={i} style={{
+                color: "#fcd34d", fontSize: 12, padding: "4px 0",
+                paddingRight: 16, position: "relative",
+              }}>
+                <span style={{ position: "absolute", right: 0 }}>•</span>
+                {note}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Quick Checklist */}
+        <div style={{
+          background: "#0d2818", border: "1px solid #166534",
+          borderRadius: 12, padding: "16px 18px", marginTop: 12,
+        }}>
+          <div style={{ color: "#4ade80", fontWeight: 700, marginBottom: 10, fontSize: 14 }}>
+            ✅ Checklist الإعداد
+          </div>
+          {[
+            "Google Cloud Console - OAuth Client ID",
+            "Supabase - تفعيل Google Provider",
+            "إضافة /auth/callback Route في React",
+            "إنشاء حساب Admin وتعديل الـ role في قاعدة البيانات",
+            "useAuth hook + ProtectedAdminRoute",
+            "تفعيل RLS في Supabase",
+            "رفع الكود على GitHub",
+            "نشر على Vercel مع Environment Variables",
+            "تحديث Redirect URLs في Supabase و Google",
+            "إضافة الموقع في Google Search Console",
+          ].map((item, i) => (
+            <CheckItem key={i} text={item} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CheckItem({ text }) {
+  const [checked, setChecked] = useState(false);
+  return (
+    <div
+      onClick={() => setChecked(!checked)}
+      style={{
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "7px 0", cursor: "pointer",
+        borderBottom: "1px solid #14532d22",
+      }}
+    >
+      <div style={{
+        width: 20, height: 20, borderRadius: 5,
+        border: checked ? "none" : "1.5px solid #4ade8066",
+        background: checked ? "#22c55e" : "transparent",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        transition: "all 0.2s", flexShrink: 0,
+      }}>
+        {checked && <span style={{ color: "#fff", fontSize: 12 }}>✓</span>}
+      </div>
+      <span style={{
+        color: checked ? "#86efac" : "#a7f3d0",
+        fontSize: 13,
+        textDecoration: checked ? "line-through" : "none",
+        opacity: checked ? 0.6 : 1,
+        transition: "all 0.2s",
+      }}>{text}</span>
+    </div>
+  );
+}
